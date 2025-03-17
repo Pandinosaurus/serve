@@ -17,6 +17,7 @@ import io.netty.util.internal.logging.Slf4JLoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.net.InetSocketAddress;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;
@@ -38,6 +40,8 @@ import org.pytorch.serve.archive.model.ModelException;
 import org.pytorch.serve.archive.model.ModelNotFoundException;
 import org.pytorch.serve.grpcimpl.GRPCInterceptor;
 import org.pytorch.serve.grpcimpl.GRPCServiceFactory;
+import org.pytorch.serve.http.messages.RegisterModelRequest;
+import org.pytorch.serve.metrics.MetricCache;
 import org.pytorch.serve.metrics.MetricManager;
 import org.pytorch.serve.servingsdk.ModelServerEndpoint;
 import org.pytorch.serve.servingsdk.annotations.Endpoint;
@@ -49,20 +53,21 @@ import org.pytorch.serve.util.ConfigManager;
 import org.pytorch.serve.util.Connector;
 import org.pytorch.serve.util.ConnectorType;
 import org.pytorch.serve.util.ServerGroups;
+import org.pytorch.serve.util.TokenAuthorization;
 import org.pytorch.serve.wlm.Model;
 import org.pytorch.serve.wlm.ModelManager;
 import org.pytorch.serve.wlm.WorkLoadManager;
+import org.pytorch.serve.wlm.WorkerInitializationException;
 import org.pytorch.serve.workflow.WorkflowManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ModelServer {
-
     private Logger logger = LoggerFactory.getLogger(ModelServer.class);
-
     private ServerGroups serverGroups;
     private Server inferencegRPCServer;
     private Server managementgRPCServer;
+    private Server OIPgRPCServer;
     private List<ChannelFuture> futures = new ArrayList<>(2);
     private AtomicBoolean stopped = new AtomicBoolean(false);
     private ConfigManager configManager;
@@ -82,7 +87,9 @@ public class ModelServer {
             ConfigManager.Arguments arguments = new ConfigManager.Arguments(cmd);
             ConfigManager.init(arguments);
             ConfigManager configManager = ConfigManager.getInstance();
+            TokenAuthorization.init();
             PluginsManager.getInstance().initialize();
+            MetricCache.init();
             InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
             ModelServer modelServer = new ModelServer(configManager);
 
@@ -119,7 +126,10 @@ public class ModelServer {
             startGRPCServers();
 
             // Create and schedule metrics manager
-            MetricManager.scheduleMetrics(configManager);
+            if (!configManager.isSystemMetricsDisabled()) {
+                MetricManager.scheduleMetrics(configManager);
+            }
+
             System.out.println("Model server started."); // NOPMD
 
             channelFutures.get(0).sync();
@@ -183,7 +193,8 @@ public class ModelServer {
                     String fileName = file.getName();
                     if (file.isFile()
                             && !fileName.endsWith(".mar")
-                            && !fileName.endsWith(".model")) {
+                            && !fileName.endsWith(".model")
+                            && !fileName.endsWith(".tar.gz")) {
                         continue;
                     }
                     try {
@@ -192,26 +203,39 @@ public class ModelServer {
 
                         ModelArchive archive =
                                 modelManager.registerModel(file.getName(), defaultModelName);
-                        modelManager.updateModel(
-                                archive.getModelName(),
-                                archive.getModelVersion(),
+                        int minWorkers =
                                 configManager.getJsonIntValue(
                                         archive.getModelName(),
                                         archive.getModelVersion(),
                                         Model.MIN_WORKERS,
-                                        workers),
+                                        workers);
+                        int maxWorkers =
                                 configManager.getJsonIntValue(
                                         archive.getModelName(),
                                         archive.getModelVersion(),
                                         Model.MAX_WORKERS,
-                                        workers),
+                                        workers);
+                        if (archive.getModelConfig() != null) {
+                            int marMinWorkers = archive.getModelConfig().getMinWorkers();
+                            int marMaxWorkers = archive.getModelConfig().getMaxWorkers();
+                            if (marMinWorkers > 0 && marMaxWorkers >= marMinWorkers) {
+                                minWorkers = marMinWorkers;
+                                maxWorkers = marMaxWorkers;
+                            }
+                        }
+                        modelManager.updateModel(
+                                archive.getModelName(),
+                                archive.getModelVersion(),
+                                minWorkers,
+                                maxWorkers,
                                 true,
                                 false);
                         startupModels.add(archive.getModelName());
                     } catch (ModelException
                             | IOException
                             | InterruptedException
-                            | DownloadArchiveException e) {
+                            | DownloadArchiveException
+                            | WorkerInitializationException e) {
                         logger.warn("Failed to load model: " + file.getAbsolutePath(), e);
                     }
                 }
@@ -244,33 +268,52 @@ public class ModelServer {
                                 modelName,
                                 null,
                                 null,
-                                1,
-                                100,
+                                -1 * RegisterModelRequest.DEFAULT_BATCH_SIZE,
+                                -1 * RegisterModelRequest.DEFAULT_MAX_BATCH_DELAY,
                                 configManager.getDefaultResponseTimeout(),
+                                configManager.getDefaultStartupTimeout(),
                                 defaultModelName,
                                 false,
                                 false,
                                 false);
-                modelManager.updateModel(
-                        archive.getModelName(),
-                        archive.getModelVersion(),
+                int minWorkers =
                         configManager.getJsonIntValue(
                                 archive.getModelName(),
                                 archive.getModelVersion(),
                                 Model.MIN_WORKERS,
-                                workers),
+                                workers);
+                int maxWorkers =
                         configManager.getJsonIntValue(
                                 archive.getModelName(),
                                 archive.getModelVersion(),
                                 Model.MAX_WORKERS,
-                                workers),
+                                workers);
+                if (archive.getModelConfig() != null) {
+                    int marMinWorkers = archive.getModelConfig().getMinWorkers();
+                    int marMaxWorkers = archive.getModelConfig().getMaxWorkers();
+                    if (marMinWorkers > 0 && marMaxWorkers >= marMinWorkers) {
+                        minWorkers = marMinWorkers;
+                        maxWorkers = marMaxWorkers;
+                    } else {
+                        logger.warn(
+                                "Invalid model config in mar, minWorkers:{}, maxWorkers:{}",
+                                marMinWorkers,
+                                marMaxWorkers);
+                    }
+                }
+                modelManager.updateModel(
+                        archive.getModelName(),
+                        archive.getModelVersion(),
+                        minWorkers,
+                        maxWorkers,
                         true,
                         false);
                 startupModels.add(archive.getModelName());
             } catch (ModelException
                     | IOException
                     | InterruptedException
-                    | DownloadArchiveException e) {
+                    | DownloadArchiveException
+                    | WorkerInitializationException e) {
                 logger.warn("Failed to load model: " + url, e);
             }
         }
@@ -410,12 +453,31 @@ public class ModelServer {
     private Server startGRPCServer(ConnectorType connectorType) throws IOException {
 
         ServerBuilder<?> s =
-                NettyServerBuilder.forPort(configManager.getGRPCPort(connectorType))
+                NettyServerBuilder.forAddress(
+                                new InetSocketAddress(
+                                        configManager.getGRPCAddress(connectorType),
+                                        configManager.getGRPCPort(connectorType)))
+                        .maxConnectionAge(
+                                configManager.getGRPCMaxConnectionAge(connectorType),
+                                TimeUnit.MILLISECONDS)
+                        .maxConnectionAgeGrace(
+                                configManager.getGRPCMaxConnectionAgeGrace(connectorType),
+                                TimeUnit.MILLISECONDS)
                         .maxInboundMessageSize(configManager.getMaxRequestSize())
                         .addService(
                                 ServerInterceptors.intercept(
                                         GRPCServiceFactory.getgRPCService(connectorType),
-                                        new GRPCInterceptor()));
+                                        new GRPCInterceptor(connectorType)));
+
+        if (connectorType == ConnectorType.INFERENCE_CONNECTOR
+                && ConfigManager.getInstance().isOpenInferenceProtocol()) {
+            s.maxInboundMessageSize(configManager.getMaxRequestSize())
+                    .addService(
+                            ServerInterceptors.intercept(
+                                    GRPCServiceFactory.getgRPCService(
+                                            ConnectorType.OPEN_INFERENCE_CONNECTOR),
+                                    new GRPCInterceptor(connectorType)));
+        }
 
         if (configManager.isGRPCSSLEnabled()) {
             s.useTransportSecurity(

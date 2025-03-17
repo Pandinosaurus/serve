@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Workflow pipeline example using nmt transformer nlp model
 
 This example uses the existing [nmt_transformers](../../nmt_transformer) standalone example to create a workflow. We use three models, in two examples to demonstrate stringing them together in a workflow.
@@ -31,7 +35,7 @@ $ mkdir model_store wf_store
 $ mv $TORCH_SERVE_DIR/examples/nmt_transformer/model_store/*.mar model_store/
 $ torch-workflow-archiver -f --workflow-name nmt_wf_dual --spec-file nmt_workflow_dualtranslation.yaml --handler nmt_workflow_handler_dualtranslation.py --export-path wf_store/
 $ torch-workflow-archiver -f --workflow-name nmt_wf_re --spec-file nmt_workflow_retranslation.yaml --handler nmt_workflow_handler_retranslation.py --export-path wf_store/
-$ torchserve --start --model-store model_store/ --workflow-store wf_store/ --ncs --ts-config config.properties
+$ torchserve --start --model-store model_store/ --workflow-store wf_store/ --ncs --ts-config config.properties --disable-token-auth  --enable-model-api
 ```
 
 ## Serve the workflow

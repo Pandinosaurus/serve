@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import org.apache.commons.io.FileUtils;
+import org.pytorch.serve.metrics.MetricCache;
 import org.pytorch.serve.servingsdk.impl.PluginsManager;
 import org.pytorch.serve.servingsdk.snapshot.Snapshot;
 import org.pytorch.serve.snapshot.InvalidSnapshotException;
@@ -59,6 +60,7 @@ public class SnapshotTest {
         ConfigManager.init(new ConfigManager.Arguments());
         configManager = ConfigManager.getInstance();
         PluginsManager.getInstance().initialize();
+        MetricCache.init();
 
         InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
         configManager.setInitialWorkerPort(9500);
@@ -136,7 +138,7 @@ public class SnapshotTest {
         Channel channel = TestUtils.getInferenceChannel(configManager);
         TestUtils.setResult(null);
         TestUtils.setLatch(new CountDownLatch(1));
-        TestUtils.describeModel(channel, "noop_v1.0", null);
+        TestUtils.describeModel(channel, "noop_v1.0", null, false);
         TestUtils.getLatch().await();
         validateNoSnapshot();
     }
@@ -267,6 +269,7 @@ public class SnapshotTest {
         System.setProperty("tsConfigFile", "");
         ConfigManager.init(new ConfigManager.Arguments());
         configManager = ConfigManager.getInstance();
+        MetricCache.init();
         server = new ModelServer(configManager);
         server.startRESTserver();
         Channel channel = null;
@@ -292,6 +295,7 @@ public class SnapshotTest {
         System.setProperty("tsConfigFile", getLastSnapshot());
         ConfigManager.init(new ConfigManager.Arguments());
         configManager = ConfigManager.getInstance();
+        MetricCache.init();
         server = new ModelServer(configManager);
         server.startRESTserver();
         Channel channel = null;

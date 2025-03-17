@@ -1,3 +1,7 @@
+<font size="6" style="font-weight: bold;"> ⚠️ Notice: Limited Maintenance </font>
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Code Coverage
 
 ## To check branch stability run the sanity suite as follows
@@ -6,14 +10,14 @@
    ```bash
    python ts_scripts/install_dependencies.py --environment=dev
    ```
-   
+
    For GPU
     - Install dependencies (if not already installed)
    ```bash
-   python ts_scripts/install_dependencies.py --environment=dev --cuda=cu102
+   python ts_scripts/install_dependencies.py --environment=dev --cuda=cu121
    ```
-   > Supported cuda versions as cu113, cu111, cu102, cu101, cu92
-   
+   > Supported cuda versions as cu121, cu118, cu117, cu116, cu113, cu111, cu102, cu101, cu92
+
  - Execute sanity suite
    ```bash
    python ./torchserve_sanity.py
@@ -31,7 +35,7 @@ TorchServe frontend build suite consists of :
   * findbugs
   * PMD
   * UT
-  
+
 The reports are generated at following path : `frontend/server/build/reports`
 
 ## To run backend pytest suite run following command

@@ -25,4 +25,7 @@ docset: html
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
+	cp ../../SECURITY.md ../security.md
+	cp ../../examples/usecases/RAG_based_LLM_serving/README.md ../enhancing_llm_serving_compile_rag.md
+	cp ../../examples/usecases/llm_diffusion_serving_app/README.md ../llm_diffusion_serving_app.md
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)

@@ -1,5 +1,6 @@
 package org.pytorch.serve.workflow;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.netty.channel.ChannelHandlerContext;
@@ -23,6 +24,7 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import org.pytorch.serve.archive.DownloadArchiveException;
 import org.pytorch.serve.archive.model.ModelNotFoundException;
 import org.pytorch.serve.archive.model.ModelVersionNotFoundException;
@@ -51,8 +53,11 @@ import org.slf4j.LoggerFactory;
 public final class WorkflowManager {
     private static final Logger logger = LoggerFactory.getLogger(WorkflowManager.class);
 
+    private final ThreadFactory namedThreadFactory =
+            new ThreadFactoryBuilder().setNameFormat("wf-manager-thread-%d").build();
     private final ExecutorService inferenceExecutorService =
-            Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            Executors.newFixedThreadPool(
+                    Runtime.getRuntime().availableProcessors(), namedThreadFactory);
 
     private static WorkflowManager workflowManager;
     private final ConfigManager configManager;
@@ -98,129 +103,31 @@ public final class WorkflowManager {
     }
 
     public StatusResponse registerWorkflow(
-            String workflowName, String url, int responseTimeout, boolean synchronous)
+            String workflowName,
+            String url,
+            int responseTimeout,
+            int startupTimeout,
+            boolean synchronous)
             throws WorkflowException {
-        return registerWorkflow(workflowName, url, responseTimeout, synchronous, false);
+        return registerWorkflow(
+                workflowName, url, responseTimeout, startupTimeout, synchronous, false);
     }
 
     public StatusResponse registerWorkflow(
             String workflowName,
             String url,
             int responseTimeout,
+            int startupTimeout,
             boolean synchronous,
             boolean s3SseKms)
             throws WorkflowException {
 
-        if (url == null) {
-            throw new BadRequestException("Parameter url is required.");
-        }
-
-        StatusResponse status = new StatusResponse();
-
-        ExecutorService executorService = Executors.newFixedThreadPool(4);
-        CompletionService<ModelRegistrationResult> executorCompletionService =
-                new ExecutorCompletionService<>(executorService);
-        boolean failed = false;
-        ArrayList<String> failedMessages = new ArrayList<>();
-        ArrayList<String> successNodes = new ArrayList<>();
-        try {
-            WorkflowArchive archive = createWorkflowArchive(workflowName, url);
-            WorkFlow workflow = createWorkflow(archive);
-
-            if (workflowMap.get(workflow.getWorkflowArchive().getWorkflowName()) != null) {
-                throw new ConflictStatusException(
-                        "Workflow "
-                                + workflow.getWorkflowArchive().getWorkflowName()
-                                + " is already registered.");
-            }
-
-            Map<String, Node> nodes = workflow.getDag().getNodes();
-
-            List<Future<ModelRegistrationResult>> futures = new ArrayList<>();
-
-            for (Map.Entry<String, Node> entry : nodes.entrySet()) {
-                Node node = entry.getValue();
-                WorkflowModel wfm = node.getWorkflowModel();
-
-                futures.add(
-                        executorCompletionService.submit(
-                                () -> registerModelWrapper(wfm, responseTimeout, synchronous)));
-            }
-
-            int i = 0;
-            while (i < futures.size()) {
-                i++;
-                Future<ModelRegistrationResult> future = executorCompletionService.take();
-                ModelRegistrationResult result = future.get();
-                if (result.getResponse().getHttpResponseCode() != HttpURLConnection.HTTP_OK) {
-                    failed = true;
-                    String msg;
-                    if (result.getResponse().getStatus() == null) {
-                        msg =
-                                "Failed to register the model "
-                                        + result.getModelName()
-                                        + ". Check error logs.";
-                    } else {
-                        msg = result.getResponse().getStatus();
-                    }
-                    failedMessages.add(msg);
-                } else {
-                    successNodes.add(result.getModelName());
-                }
-            }
-
-            if (failed) {
-                String rollbackFailure = null;
-                try {
-                    removeArtifacts(workflowName, workflow, successNodes);
-                } catch (Exception e) {
-                    rollbackFailure =
-                            "Error while doing rollback of failed workflow. Details"
-                                    + e.getMessage();
-                }
-
-                if (rollbackFailure != null) {
-                    failedMessages.add(rollbackFailure);
-                }
-                status.setHttpResponseCode(HttpURLConnection.HTTP_INTERNAL_ERROR);
-                String message =
-                        String.format(
-                                "Workflow %s has failed to register. Failures: %s",
-                                workflow.getWorkflowArchive().getWorkflowName(),
-                                failedMessages.toString());
-                status.setStatus(message);
-                status.setE(new WorkflowException(message));
-
-            } else {
-                status.setHttpResponseCode(HttpURLConnection.HTTP_OK);
-                status.setStatus(
-                        String.format(
-                                "Workflow %s has been registered and scaled successfully.",
-                                workflow.getWorkflowArchive().getWorkflowName()));
-
-                workflowMap.putIfAbsent(workflow.getWorkflowArchive().getWorkflowName(), workflow);
-            }
-
-        } catch (DownloadArchiveException e) {
-            status.setHttpResponseCode(HttpURLConnection.HTTP_BAD_REQUEST);
-            status.setStatus("Failed to download workflow archive file");
-            status.setE(e);
-        } catch (InvalidDAGException e) {
-            status.setHttpResponseCode(HttpURLConnection.HTTP_BAD_REQUEST);
-            status.setStatus("Invalid workflow specification");
-            status.setE(e);
-        } catch (InterruptedException | ExecutionException | IOException e) {
-            status.setHttpResponseCode(HttpURLConnection.HTTP_INTERNAL_ERROR);
-            status.setStatus("Failed to register workflow.");
-            status.setE(e);
-        } finally {
-            executorService.shutdown();
-        }
-        return status;
+        // Permanently disable registeration of new workflows
+        throw new BadRequestException("Registering new workflows is disabled.");
     }
 
     public ModelRegistrationResult registerModelWrapper(
-            WorkflowModel wfm, int responseTimeout, boolean synchronous) {
+            WorkflowModel wfm, int responseTimeout, int startupTimeout, boolean synchronous) {
         StatusResponse status = new StatusResponse();
         try {
             status =
@@ -232,6 +139,7 @@ public final class WorkflowManager {
                             wfm.getBatchSize(),
                             wfm.getMaxBatchDelay(),
                             responseTimeout,
+                            startupTimeout,
                             wfm.getMaxWorkers(),
                             synchronous,
                             true,
@@ -381,7 +289,7 @@ public final class WorkflowManager {
                                                 new DefaultFullHttpResponse(
                                                         HttpVersion.HTTP_1_1,
                                                         HttpResponseStatus.OK,
-                                                        false);
+                                                        true);
                                         resp.headers()
                                                 .set(
                                                         HttpHeaderNames.CONTENT_TYPE,
@@ -399,7 +307,7 @@ public final class WorkflowManager {
                                                             StandardCharsets.UTF_8);
                                             result.add(
                                                     prediction.getNodeName(),
-                                                    new JsonParser().parse(val).getAsJsonObject());
+                                                    JsonParser.parseString(val).getAsJsonObject());
                                         }
                                         NettyUtils.sendJsonResponse(ctx, result);
                                     }

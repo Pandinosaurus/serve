@@ -71,6 +71,22 @@ public final class OpenApiUtils {
         return JsonUtils.GSON_PRETTY.toJson(openApi);
     }
 
+    public static String getModelManagementApi(Model model) {
+        String modelName = model.getModelName();
+        OpenApi openApi = new OpenApi();
+        Info info = new Info();
+        info.setTitle("RESTful Management API for: " + modelName);
+        ConfigManager config = ConfigManager.getInstance();
+        info.setVersion(config.getProperty("version", null));
+        openApi.setInfo(info);
+
+        openApi.addPath("/models/{model_name}", getModelManagerPath(false));
+        openApi.addPath("/models/{model_name}/{model_version}", getModelManagerPath(true));
+        openApi.addPath("/models/{model_name}/{model_version}/set-default", getSetDefaultPath());
+
+        return JsonUtils.GSON_PRETTY.toJson(openApi);
+    }
+
     private static Path getApiDescriptionPath(String operationID, boolean legacy) {
         Schema schema = new Schema("object");
         schema.addProperty("openapi", new Schema("string"), true);
@@ -187,7 +203,7 @@ public final class OpenApiUtils {
         MediaType error = getErrorResponse();
 
         operation.addResponse(
-                new Response("200", "Default vesion succsesfully updated for model", status));
+                new Response("200", "Default version successfully updated for model", status));
         operation.addResponse(
                 new Response("404", "Model not found or Model version not found", error));
         operation.addResponse(new Response("500", "Internal Server Error", error));
@@ -280,6 +296,12 @@ public final class OpenApiUtils {
                         "Maximum time, in seconds, the TorchServe waits for a response from the model inference code, default: 120."));
         operation.addParameter(
                 new QueryParameter(
+                        "startup_timeout",
+                        "integer",
+                        "120",
+                        "Maximum time, in seconds, the TorchServe waits for the model to startup/initialize, default: 120."));
+        operation.addParameter(
+                new QueryParameter(
                         "initial_workers",
                         "integer",
                         "0",
@@ -328,8 +350,8 @@ public final class OpenApiUtils {
             operationId = "version_unregisterModel";
         } else {
             operationDescription =
-                    "Unregister the default version of a model from TorchServe if it is the only version available."
-                            + "This is a asynchronous call by default. Caller can call listModels to confirm model is unregistered";
+                    "Unregister the default version of a model from TorchServe if it is the only version available. "
+                            + "This is an asynchronous call by default. Caller can call listModels to confirm model is unregistered.";
             operationId = "unregisterModel";
         }
         Operation operation = new Operation(operationId, operationDescription);
@@ -417,7 +439,6 @@ public final class OpenApiUtils {
         workerStatus.setEnumeration(status);
         worker.addProperty("status", workerStatus, true);
         workers.setItems(worker);
-
         schema.addProperty("workers", workers, true);
         Schema metrics = new Schema("object");
         metrics.addProperty(
@@ -433,6 +454,16 @@ public final class OpenApiUtils {
                 new Schema("integer", "Number requests processed in last 10 minutes."),
                 true);
         schema.addProperty("metrics", metrics, true);
+        Schema jobQueueStatus = new Schema("object");
+        jobQueueStatus.addProperty(
+                "remainingCapacity",
+                new Schema("integer", "Number of new requests that can be queued."),
+                true);
+        jobQueueStatus.addProperty(
+                "pendingRequests",
+                new Schema("integer", "Number of requests waiting in the queue."),
+                true);
+        schema.addProperty("jobQueueStatus", jobQueueStatus, true);
 
         MediaType mediaType = new MediaType(HttpHeaderValues.APPLICATION_JSON.toString(), schema);
         MediaType error = getErrorResponse();
@@ -451,12 +482,12 @@ public final class OpenApiUtils {
         if (version) {
             operationDescription =
                     "Configure number of workers for a specified version of a model. "
-                            + "This is a asynchronous call by default. Caller need to call describeModel to check if the model workers has been changed.";
+                            + "This is an asynchronous call by default. Caller need to call describeModel to check if the model workers has been changed.";
             operationId = "version_setAutoScale";
         } else {
             operationDescription =
-                    "Configure number of workers for a default version of a model."
-                            + "This is a asynchronous call by default. Caller need to call describeModel to check if the model workers has been changed.";
+                    "Configure number of workers for a default version of a model. "
+                            + "This is an asynchronous call by default. Caller need to call describeModel to check if the model workers has been changed.";
             operationId = "setAutoScale";
         }
 

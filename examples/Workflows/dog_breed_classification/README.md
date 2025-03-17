@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Workflow pipeline example for classifying dog breed
 
 This workflow uses two models, first to classify if an image is of a dog or a cat. If it is a dog the second model does breed classification.
@@ -24,7 +28,7 @@ $ torch-workflow-archiver -f --workflow-name dog_breed_wf --spec-file workflow_d
 
 ## Serve the workflow
 ```
-$ torchserve --start --model-store model_store/ --workflow-store wf_store/ --ncs
+$ torchserve --start --model-store model_store/ --workflow-store wf_store/ --ncs --disable-token-auth  --enable-model-api
 $ curl -X POST "http://127.0.0.1:8081/workflows?url=dog_breed_wf.war"
 {
   "status": "Workflow dog_breed_wf has been registered and scaled successfully."

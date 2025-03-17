@@ -3,19 +3,24 @@ File to define the entry point to Model Server
 """
 
 import os
+import pathlib
+import platform
 import re
 import subprocess
 import sys
 import tempfile
 from builtins import str
-import platform
+from typing import Dict
 
 import psutil
-from ts.version import __version__
+
 from ts.arg_parser import ArgParser
+from ts.version import __version__
+
+TS_NAMESPACE = "org.pytorch.serve.ModelServer"
 
 
-def start():
+def start() -> None:
     """
     This is the entry point for model server
     :return:
@@ -26,7 +31,13 @@ def start():
     if os.path.isfile(pid_file):
         with open(pid_file, "r") as f:
             pid = int(f.readline())
-
+            try:
+                process_from_pid_file = psutil.Process(pid)
+                pid = pid if TS_NAMESPACE in process_from_pid_file.cmdline() else None
+            except psutil.Error:
+                pid = None
+                print("Removing orphan pid file.")
+                os.remove(pid_file)
     # pylint: disable=too-many-nested-blocks
     if args.version:
         print("TorchServe Version is {}".format(__version__))
@@ -38,7 +49,14 @@ def start():
             try:
                 parent = psutil.Process(pid)
                 parent.terminate()
-                print("TorchServe has stopped.")
+                pathlib.Path("key_file.json").unlink(missing_ok=True)
+                if args.foreground:
+                    try:
+                        parent.wait(timeout=60)
+                    except psutil.TimeoutExpired:
+                        print("Stopping TorchServe took too long.")
+                else:
+                    print("TorchServe has stopped.")
             except (OSError, psutil.Error):
                 print("TorchServe already stopped.")
             os.remove(pid_file)
@@ -46,7 +64,9 @@ def start():
         if pid is not None:
             try:
                 psutil.Process(pid)
-                print("TorchServe is already running, please use torchserve --stop to stop TorchServe.")
+                print(
+                    "TorchServe is already running, please use torchserve --stop to stop TorchServe."
+                )
                 sys.exit(1)
             except psutil.Error:
                 print("Removing orphan pid file.")
@@ -68,7 +88,11 @@ def start():
         tmp_dir = os.environ.get("TEMP")
         if tmp_dir:
             if not os.path.isdir(tmp_dir):
-                print("Invalid temp directory: {}, please check TEMP environment variable.".format(tmp_dir))
+                print(
+                    "Invalid temp directory: {}, please check TEMP environment variable.".format(
+                        tmp_dir
+                    )
+                )
                 sys.exit(1)
 
             cmd.append("-Djava.io.tmpdir={}".format(tmp_dir))
@@ -84,13 +108,20 @@ def start():
             ts_conf_file = ts_config
 
         platform_path_separator = {"Windows": "", "Darwin": ".:", "Linux": ".:"}
-        class_path = "{}{}".format(platform_path_separator[platform.system()], os.path.join(ts_home, "ts/frontend/*"))
+        class_path = "{}{}".format(
+            platform_path_separator[platform.system()],
+            os.path.join(ts_home, "ts", "frontend", "*"),
+        )
 
         if ts_conf_file and os.path.isfile(ts_conf_file):
             props = load_properties(ts_conf_file)
             vm_args = props.get("vmargs")
             if vm_args:
-                print("Warning: TorchServe is using non-default JVM parameters: {}".format(vm_args))
+                print(
+                    "Warning: TorchServe is using non-default JVM parameters: {}".format(
+                        vm_args
+                    )
+                )
                 arg_list = vm_args.split()
                 if args.log_config:
                     for word in arg_list[:]:
@@ -99,13 +130,19 @@ def start():
                 cmd.extend(arg_list)
             plugins = props.get("plugins_path", None)
             if plugins:
-                class_path += ":" + plugins + "/*" if "*" not in plugins else ":" + plugins
+                class_path += (
+                    ":" + plugins + "/*" if "*" not in plugins else ":" + plugins
+                )
 
-            if not args.model_store and props.get('model_store'):
-                args.model_store = props.get('model_store')
+            if not args.model_store and props.get("model_store"):
+                args.model_store = props.get("model_store")
 
         if args.plugins_path:
-            class_path += ":" + args.plugins_path + "/*" if "*" not in args.plugins_path else ":" + args.plugins_path
+            class_path += (
+                ":" + args.plugins_path + "/*"
+                if "*" not in args.plugins_path
+                else ":" + args.plugins_path
+            )
 
         cmd.append("-cp")
         cmd.append(class_path)
@@ -133,17 +170,24 @@ def start():
 
         if args.workflow_store:
             if not os.path.isdir(args.workflow_store):
-                print("--workflow-store directory not found: {}".format(args.workflow_store))
+                print(
+                    "--workflow-store directory not found: {}".format(
+                        args.workflow_store
+                    )
+                )
                 sys.exit(1)
 
             cmd.append("-w")
             cmd.append(args.workflow_store)
-        else:
-            cmd.append("-w")
-            cmd.append(args.model_store)
 
         if args.no_config_snapshots:
             cmd.append("-ncs")
+
+        if args.token_auth:
+            cmd.append("--disable-token-auth")
+
+        if args.model_mode:
+            cmd.append("--enable-model-api")
 
         if args.models:
             cmd.append("-m")
@@ -155,6 +199,14 @@ def start():
                         print("--model-store is required to load model locally.")
                         sys.exit(1)
 
+        if args.cpp_log_config:
+            cpp_log_config = os.path.realpath(args.cpp_log_config)
+            if not os.path.isfile(cpp_log_config):
+                print("--cpp-log-config file not found: {}".format(cpp_log_config))
+                sys.exit(1)
+
+            cmd.append("-clog")
+            cmd.append(cpp_log_config)
 
         try:
             process = subprocess.Popen(cmd)
@@ -170,7 +222,7 @@ def start():
                 print("start java frontend failed:", sys.exc_info())
 
 
-def load_properties(file_path):
+def load_properties(file_path: str) -> Dict[str, str]:
     """
     Read properties file into map.
     """
@@ -183,7 +235,6 @@ def load_properties(file_path):
                 if len(pair) > 1:
                     key = pair[0].strip()
                     props[key] = pair[1].strip()
-
     return props
 
 

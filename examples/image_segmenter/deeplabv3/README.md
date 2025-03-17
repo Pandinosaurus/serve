@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Image Segmentation using torchvision's pretrained deeplabv3_resnet_101_coco model.
 
 * Download the pre-trained deeplabv3_resnet_101_coco image segmentation model's state_dict from the following URL:
@@ -14,7 +18,7 @@ wget https://download.pytorch.org/models/deeplabv3_resnet101_coco-586e9e4e.pth
     torch-model-archiver --model-name deeplabv3_resnet_101 --version 1.0 --model-file examples/image_segmenter/deeplabv3/model.py --serialized-file deeplabv3_resnet101_coco-586e9e4e.pth --handler image_segmenter --extra-files examples/image_segmenter/deeplabv3/deeplabv3.py,examples/image_segmenter/deeplabv3/intermediate_layer_getter.py,examples/image_segmenter/deeplabv3/fcn.py
     mkdir model_store
     mv deeplabv3_resnet_101.mar model_store/
-    torchserve --start --model-store model_store --models deeplabv3=deeplabv3_resnet_101.mar
+    torchserve --start --model-store model_store --models deeplabv3=deeplabv3_resnet_101.mar --disable-token-auth  --enable-model-api
     curl http://127.0.0.1:8080/predictions/deeplabv3 -T examples/image_segmenter/persons.jpg
     ```
 * Output

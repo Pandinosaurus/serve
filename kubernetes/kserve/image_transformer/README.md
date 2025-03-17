@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Predict on a InferenceService using PyTorch Server and Transformer
 
 Most of the model servers expect tensors as input data, so a pre-processing step is needed before making the prediction call if the user is sending in raw input format. Transformer is a service for users to implement pre/post processing code before making the prediction call. In this example we add additional pre-processing step to allow the user send raw image data and convert it into json array.
@@ -82,11 +86,11 @@ sudo  mkdir -p /mnt/models/config/
 The config.properties file is as below:
 
 ```bash
-inference_address=http://0.0.0.0:8085
-management_address=http://0.0.0.0:8085
-metrics_address=http://0.0.0.0:8082
+inference_address=http://127.0.0.1:8085
+management_address=http://127.0.0.1:8085
+metrics_address=http://127.0.0.1:8082
 enable_metrics_api=true
-metrics_format=prometheus
+metrics_mode=prometheus
 NUM_WORKERS=1
 number_of_netty_threads=4
 job_queue_size=10
@@ -110,7 +114,7 @@ pip install -e ./serve/kubernetes/kserve/image_transformer/
 - Run the Image Transformer with the below command
 
 ```bash
-python3 -m image_transformer --predictor_host 0.0.0.0:8085
+python3 -m image_transformer --predictor_host 127.0.0.1:8085
 ```
 
 The transformer will hit the predictor host after pre-processing.
@@ -134,7 +138,7 @@ The request first comes to the image transformer at port 8080 and in turn reques
 - The curl request for inference is as below:
 
 ```
-curl -H "Content-Type: application/json" --data @serve/kubernetes/kserve/kf_request_json/mnist.json http://0.0.0.0:8080/v1/models/mnist:predict
+curl -H "Content-Type: application/json" --data @serve/kubernetes/kserve/kf_request_json/v1/mnist.json http://127.0.0.1:8080/v1/models/mnist:predict
 ```
 
 output:

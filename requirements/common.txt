@@ -1,10 +1,8 @@
-future
-psutil
-wheel
-requests
-sentencepiece
-pillow==8.3.2
-captum
-packaging
-numpy; sys_platform != 'win32'
-numpy==1.19.3; sys_platform == 'win32' #see https://tinyurl.com/y3dm3h86
+psutil==5.9.8
+requests==2.32.0
+captum==0.6.0
+packaging==23.2
+pynvml==11.5.0
+pyyaml==6.0.1
+ninja==1.11.1.1
+setuptools

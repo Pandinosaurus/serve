@@ -82,6 +82,11 @@ public class ModelRequestEncoder extends MessageToByteEncoder<BaseModelRequest> 
         }
         out.writeInt(-1); // End of List
 
+        if (req.isCachedInBackend()) {
+            out.writeInt(-1); // End of List
+            return;
+        }
+
         for (InputParameter input : req.getParameters()) {
             encodeParameter(input, out);
         }

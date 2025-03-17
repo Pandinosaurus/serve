@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.io.IOUtils;
@@ -20,26 +21,35 @@ import org.slf4j.LoggerFactory;
 public class MetricCollector implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(MetricCollector.class);
-    private static final Logger loggerMetrics =
-            LoggerFactory.getLogger(ConfigManager.MODEL_SERVER_METRICS_LOGGER);
+    private final MetricCache metricCache;
     private ConfigManager configManager;
 
     public MetricCollector(ConfigManager configManager) {
         this.configManager = configManager;
+        this.metricCache = MetricCache.getInstance();
     }
 
     @Override
     public void run() {
         try {
             // Collect System level Metrics
-            String[] args = new String[2];
-            args[0] = configManager.getPythonExecutable();
-            args[1] = "ts/metrics/metric_collector.py";
+            List<String> args = new ArrayList<>();
+            args.add(configManager.getPythonExecutable());
+            String systemMetricsCmd = configManager.getSystemMetricsCmd();
+            if (systemMetricsCmd.isEmpty()) {
+                systemMetricsCmd =
+                        String.format(
+                                "%s --gpu %s",
+                                "ts/metrics/metric_collector.py",
+                                String.valueOf(configManager.getNumberOfGpu()));
+            }
+            args.addAll(Arrays.asList(systemMetricsCmd.split("\\s+")));
             File workingDir = new File(configManager.getModelServerHome());
 
             String[] envp = EnvironmentUtils.getEnvString(workingDir.getAbsolutePath(), null, null);
-
-            final Process p = Runtime.getRuntime().exec(args, envp, workingDir); // NOPMD
+            final Process p =
+                    Runtime.getRuntime()
+                            .exec(args.toArray(new String[0]), envp, workingDir); // NOPMD
             ModelManager modelManager = ModelManager.getInstance();
             Map<Integer, WorkerThread> workerMap = modelManager.getWorkers();
             try (OutputStream os = p.getOutputStream()) {
@@ -77,7 +87,25 @@ public class MetricCollector implements Runnable {
                     if (metric == null) {
                         logger.warn("Parse metrics failed: " + line);
                     } else {
-                        loggerMetrics.info("{}", metric);
+                        if (this.metricCache.getMetricFrontend(metric.getMetricName()) != null) {
+                            try {
+                                // Frontend metrics by default have the last dimension as Hostname
+                                List<String> dimensionValues = metric.getDimensionValues();
+                                dimensionValues.add(metric.getHostName());
+
+                                this.metricCache
+                                        .getMetricFrontend(metric.getMetricName())
+                                        .addOrUpdate(
+                                                dimensionValues,
+                                                Double.parseDouble(metric.getValue()));
+                            } catch (Exception e) {
+                                logger.error(
+                                        "Failed to update frontend metric ",
+                                        metric.getMetricName(),
+                                        ": ",
+                                        e);
+                            }
+                        }
                         metricsSystem.add(metric);
                     }
                 }

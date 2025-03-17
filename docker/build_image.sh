@@ -1,14 +1,25 @@
 #!/bin/bash
 
+set -o errexit -o nounset -o pipefail
+
 MACHINE=cpu
 BRANCH_NAME="master"
+REPO_URL="https://github.com/pytorch/serve.git"
 DOCKER_TAG="pytorch/torchserve:latest-cpu"
 BUILD_TYPE="production"
-DOCKER_FILE="Dockerfile"
-BASE_IMAGE="ubuntu:18.04"
-CUSTOM_TAG=false
+BASE_IMAGE="ubuntu:20.04"
+UPDATE_BASE_IMAGE=false
+USE_CUSTOM_TAG=false
 CUDA_VERSION=""
 USE_LOCAL_SERVE_FOLDER=false
+BUILD_WITH_IPEX=false
+BUILD_CPP=false
+BUILD_NIGHTLY=false
+BUILD_FROM_SRC=false
+LOCAL_CHANGES=true
+PYTHON_VERSION=3.9
+ARCH="linux/arm64,linux/amd64"
+MULTI=false
 
 for arg in "$@"
 do
@@ -17,17 +28,26 @@ do
           echo "options:"
           echo "-h, --help  show brief help"
           echo "-b, --branch_name=BRANCH_NAME specify a branch_name to use"
+          echo "-repo, --repo_url=REPO_URL specify a github repo url to use"
           echo "-g, --gpu specify to use gpu"
-          echo "-bt, --buildtype specify to created image for codebuild. Possible values: production, dev, codebuild."
+          echo "-bi, --baseimage specify base docker image. Example: nvidia/cuda:11.7.0-cudnn8-runtime-ubuntu20.04 "
+          echo "-bt, --buildtype specify for type of created image. Possible values: production, dev, ci."
           echo "-cv, --cudaversion specify to cuda version to use"
           echo "-t, --tag specify tag name for docker image"
           echo "-lf, --use-local-serve-folder specify this option for the benchmark image if the current 'serve' folder should be used during automated benchmarks"
+          echo "-ipex, --build-with-ipex specify to build with intel_extension_for_pytorch"
+          echo "-cpp, --build-cpp specify to build TorchServe CPP"
+          echo "-py, --pythonversion specify to python version to use: Possible values: 3.8 3.9 3.10"
+          echo "-n, --nightly specify to build with TorchServe nightly"
+          echo "-s, --source specify to build with TorchServe from source"
+          echo "-r, --remote specify to use local TorchServe"
           exit 0
           ;;
         -b|--branch_name)
           if test $
           then
             BRANCH_NAME="$2"
+            LOCAL_CHANGES=false
             shift
           else
             echo "Error! branch_name not provided"
@@ -35,11 +55,29 @@ do
           fi
           shift
           ;;
+        -repo|--repo_url)
+          if test $
+          then
+            REPO_URL="$2"
+            LOCAL_CHANGES=false
+            shift
+          else
+            echo "Error! repo_url not provided"
+            exit 1
+          fi
+          shift
+          ;;
         -g|--gpu)
           MACHINE=gpu
           DOCKER_TAG="pytorch/torchserve:latest-gpu"
-          BASE_IMAGE="nvidia/cuda:10.2-cudnn7-runtime-ubuntu18.04"
-          CUDA_VERSION="cu102"
+          BASE_IMAGE="nvidia/cuda:12.1.1-base-ubuntu20.04"
+          CUDA_VERSION="cu121"
+          shift
+          ;;
+        -bi|--baseimage)
+          BASE_IMAGE="$2"
+          UPDATE_BASE_IMAGE=true
+          shift
           shift
           ;;
         -bt|--buildtype)
@@ -48,8 +86,8 @@ do
           shift
           ;;
         -t|--tag)
-          DOCKER_TAG="$2"
-          CUSTOM_TAG=true
+          CUSTOM_TAG="$2"
+          USE_CUSTOM_TAG=true
           shift
           shift
           ;;
@@ -57,21 +95,69 @@ do
           USE_LOCAL_SERVE_FOLDER=true
           shift
           ;;
+        -ipex|--build-with-ipex)
+          BUILD_WITH_IPEX=true
+          shift
+          ;;
+        -cpp|--build-cpp)
+          BUILD_CPP=true
+          shift
+          ;;
+        -m|--multi)
+          MULTI=true
+          shift
+          ;;
+        -n|--nightly)
+          BUILD_NIGHTLY=true
+          shift
+          ;;
+        -py|--pythonversion)
+          PYTHON_VERSION="$2"
+          if [[ $PYTHON_VERSION = 3.8 || $PYTHON_VERSION = 3.9 || $PYTHON_VERSION = 3.10 || $PYTHON_VERSION = 3.11 ]]; then
+            echo "Valid python version"
+          else
+            echo "Valid python versions are 3.8, 3.9 3.10 and 3.11"
+            exit 1
+          fi
+          shift
+          shift
+          ;;
+        -s|--source)
+          BUILD_FROM_SRC=true
+          shift
+          ;;
+        -r|--remote)
+          LOCAL_CHANGES=false
+          shift
+          ;;
+        # With default ubuntu version 20.04
         -cv|--cudaversion)
           CUDA_VERSION="$2"
-          if [ $CUDA_VERSION == "cu113" ];
+          if [ "${CUDA_VERSION}" == "cu121" ];
           then
-            BASE_IMAGE="nvidia/cuda:11.3.0-cudnn8-runtime-ubuntu18.04"
-          elif [ $CUDA_VERSION == "cu111" ];
+            BASE_IMAGE="nvidia/cuda:12.1.0-base-ubuntu20.04"
+          elif [ "${CUDA_VERSION}" == "cu118" ];
           then
-            BASE_IMAGE="nvidia/cuda:11.1-cudnn8-runtime-ubuntu18.04"
-          elif [ $CUDA_VERSION == "cu102" ];
+            BASE_IMAGE="nvidia/cuda:11.8.0-base-ubuntu20.04"
+          elif [ "${CUDA_VERSION}" == "cu117" ];
           then
-            BASE_IMAGE="nvidia/cuda:10.2-cudnn7-runtime-ubuntu18.04"
-          elif [ $CUDA_VERSION == "cu101" ]
+            BASE_IMAGE="nvidia/cuda:11.7.1-base-ubuntu20.04"
+          elif [ "${CUDA_VERSION}" == "cu116" ];
+          then
+            BASE_IMAGE="nvidia/cuda:11.6.0-cudnn8-runtime-ubuntu20.04"
+          elif [ "${CUDA_VERSION}" == "cu113" ];
+          then
+            BASE_IMAGE="nvidia/cuda:11.3.0-cudnn8-runtime-ubuntu20.04"
+          elif [ "${CUDA_VERSION}" == "cu111" ];
+          then
+            BASE_IMAGE="nvidia/cuda:11.1.1-cudnn8-runtime-ubuntu20.04"
+          elif [ "${CUDA_VERSION}" == "cu102" ];
+          then
+            BASE_IMAGE="nvidia/cuda:10.2-cudnn8-runtime-ubuntu18.04"
+          elif [ "${CUDA_VERSION}" == "cu101" ]
           then
             BASE_IMAGE="nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
-          elif [ $CUDA_VERSION == "cu92" ];
+          elif [ "${CUDA_VERSION}" == "cu92" ];
           then
             BASE_IMAGE="nvidia/cuda:9.2-cudnn7-runtime-ubuntu18.04"
           else
@@ -84,22 +170,79 @@ do
     esac
 done
 
-if [ "${BUILD_TYPE}" == "dev" ] && ! $CUSTOM_TAG ;
+if [ "${MACHINE}" == "gpu" ] && $BUILD_WITH_IPEX ;
 then
-  DOCKER_TAG="pytorch/torchserve:dev-$MACHINE"
+  echo "--gpu and --ipex are mutually exclusive. Please select one of them."
+  exit 1
 fi
 
-if [ "${BUILD_TYPE}" == "codebuild" ] && ! $CUSTOM_TAG ;
+if [ "${BUILD_TYPE}" == "dev" ] && ! $USE_CUSTOM_TAG ;
 then
-  DOCKER_TAG="pytorch/torchserve:codebuild-$MACHINE"
+  if [ "${BUILD_CPP}" == "true" ]
+  then
+    DOCKER_TAG="pytorch/torchserve:cpp-dev-$MACHINE"
+  else
+    DOCKER_TAG="pytorch/torchserve:dev-$MACHINE"
+  fi
 fi
 
-if [ $BUILD_TYPE == "production" ]
+if [ "$USE_CUSTOM_TAG" = true ]
 then
-  DOCKER_BUILDKIT=1 docker build --file Dockerfile --build-arg BASE_IMAGE=$BASE_IMAGE --build-arg CUDA_VERSION=$CUDA_VERSION -t $DOCKER_TAG .
-elif [ $BUILD_TYPE == "benchmark" ]
+  DOCKER_TAG=${CUSTOM_TAG}
+fi
+
+if [[ $UPDATE_BASE_IMAGE == true && $MACHINE == "gpu" ]];
 then
-  DOCKER_BUILDKIT=1 docker build --pull --no-cache --file Dockerfile.benchmark --build-arg USE_LOCAL_SERVE_FOLDER=$USE_LOCAL_SERVE_FOLDER --build-arg BASE_IMAGE=$BASE_IMAGE --build-arg BRANCH_NAME=$BRANCH_NAME --build-arg CUDA_VERSION=$CUDA_VERSION --build-arg MACHINE_TYPE=$MACHINE -t $DOCKER_TAG .
+  echo "Incompatible options: -bi doesn't work with -g option"
+  exit 1
+fi
+
+if [ "$BUILD_CPP" == "true" ];
+then
+  if [ "$BUILD_TYPE" != "dev" ];
+  then
+    echo "Only dev container build is supported for CPP"
+    exit 1
+  fi
+
+  if [[ "${MACHINE}" == "gpu" || "${CUDA_VERSION}" != "" ]];
+  then
+    if [ "${CUDA_VERSION}" == "cu121" ];
+    then
+      BASE_IMAGE="nvidia/cuda:12.1.1-devel-ubuntu20.04"
+    elif [ "${CUDA_VERSION}" == "cu118" ];
+    then
+      BASE_IMAGE="nvidia/cuda:11.8.0-devel-ubuntu20.04"
+    else
+      echo "Cuda version $CUDA_VERSION is not supported for CPP"
+      exit 1
+    fi
+  fi
+fi
+
+if [ "${BUILD_TYPE}" == "production" ]; then
+  if [ "${MULTI}" == "true" ]; then
+    DOCKER_BUILDKIT=1 docker buildx build --file Dockerfile --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg USE_CUDA_VERSION="${CUDA_VERSION}" --build-arg PYTHON_VERSION="${PYTHON_VERSION}"\
+    --build-arg BUILD_NIGHTLY="${BUILD_NIGHTLY}" --build-arg BRANCH_NAME="${BRANCH_NAME}" --build-arg REPO_URL="${REPO_URL}" --build-arg BUILD_FROM_SRC="${BUILD_FROM_SRC}"\
+    --build-arg LOCAL_CHANGES="${LOCAL_CHANGES}" -t "${DOCKER_TAG}" --platform "${ARCH}" --target production-image ../ --push
+  else
+    DOCKER_BUILDKIT=1 docker buildx build --file Dockerfile --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg USE_CUDA_VERSION="${CUDA_VERSION}" --build-arg PYTHON_VERSION="${PYTHON_VERSION}"\
+    --build-arg BUILD_NIGHTLY="${BUILD_NIGHTLY}" --build-arg BRANCH_NAME="${BRANCH_NAME}" --build-arg REPO_URL="${REPO_URL}" --build-arg BUILD_FROM_SRC="${BUILD_FROM_SRC}"\
+    --build-arg LOCAL_CHANGES="${LOCAL_CHANGES}" -t "${DOCKER_TAG}" --target production-image ../ --load
+  fi
+elif [ "${BUILD_TYPE}" == "ci" ];
+then
+  DOCKER_BUILDKIT=1 docker build --file Dockerfile --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg USE_CUDA_VERSION="${CUDA_VERSION}"  --build-arg PYTHON_VERSION="${PYTHON_VERSION}"\
+  --build-arg BUILD_NIGHTLY="${BUILD_NIGHTLY}" --build-arg BRANCH_NAME="${BRANCH_NAME}" --build-arg REPO_URL="${REPO_URL}" --build-arg BUILD_FROM_SRC="${BUILD_FROM_SRC}"\
+  --build-arg LOCAL_CHANGES="${LOCAL_CHANGES}" -t "${DOCKER_TAG}" --target ci-image  ../
 else
-  DOCKER_BUILDKIT=1 docker build --pull --no-cache --file Dockerfile.dev -t $DOCKER_TAG --build-arg BUILD_TYPE=$BUILD_TYPE --build-arg BASE_IMAGE=$BASE_IMAGE --build-arg BRANCH_NAME=$BRANCH_NAME --build-arg CUDA_VERSION=$CUDA_VERSION --build-arg MACHINE_TYPE=$MACHINE .
+  if [ "${BUILD_CPP}" == "true" ]
+  then
+    DOCKER_BUILDKIT=1 docker build --file Dockerfile.cpp --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg USE_CUDA_VERSION="${CUDA_VERSION}" --build-arg PYTHON_VERSION="${PYTHON_VERSION}"\
+    --build-arg BRANCH_NAME="${BRANCH_NAME}" --build-arg REPO_URL="${REPO_URL}" -t "${DOCKER_TAG}" --target cpp-dev-image .
+  else
+    DOCKER_BUILDKIT=1 docker build --file Dockerfile --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg USE_CUDA_VERSION="${CUDA_VERSION}"  --build-arg PYTHON_VERSION="${PYTHON_VERSION}"\
+    --build-arg BUILD_NIGHTLY="${BUILD_NIGHTLY}" --build-arg BRANCH_NAME="${BRANCH_NAME}" --build-arg REPO_URL="${REPO_URL}" --build-arg BUILD_FROM_SRC="${BUILD_FROM_SRC}" --build-arg LOCAL_CHANGES="${LOCAL_CHANGES}"\
+    --build-arg BUILD_WITH_IPEX="${BUILD_WITH_IPEX}"  -t "${DOCKER_TAG}" --target dev-image  ../
+  fi
 fi

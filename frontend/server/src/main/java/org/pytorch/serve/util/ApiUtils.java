@@ -12,13 +12,13 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
-import org.apache.commons.io.FilenameUtils;
 import org.pytorch.serve.archive.DownloadArchiveException;
 import org.pytorch.serve.archive.model.Manifest;
 import org.pytorch.serve.archive.model.ModelArchive;
 import org.pytorch.serve.archive.model.ModelException;
 import org.pytorch.serve.archive.model.ModelNotFoundException;
 import org.pytorch.serve.archive.model.ModelVersionNotFoundException;
+import org.pytorch.serve.archive.utils.ArchiveUtils;
 import org.pytorch.serve.http.BadRequestException;
 import org.pytorch.serve.http.InternalServerException;
 import org.pytorch.serve.http.InvalidModelVersionException;
@@ -35,6 +35,8 @@ import org.pytorch.serve.util.messages.WorkerCommands;
 import org.pytorch.serve.wlm.Model;
 import org.pytorch.serve.wlm.ModelManager;
 import org.pytorch.serve.wlm.ModelVersionedRefs;
+import org.pytorch.serve.wlm.WorkerInitializationException;
+import org.pytorch.serve.wlm.WorkerState;
 import org.pytorch.serve.wlm.WorkerThread;
 
 public final class ApiUtils {
@@ -96,7 +98,7 @@ public final class ApiUtils {
         ModelManager modelManager = ModelManager.getInstance();
         modelManager.setDefaultVersion(modelName, newModelVersion);
         String msg =
-                "Default vesion succsesfully updated for model \""
+                "Default version successfully updated for model \""
                         + modelName
                         + "\" to \""
                         + newModelVersion
@@ -107,7 +109,7 @@ public final class ApiUtils {
 
     public static StatusResponse registerModel(RegisterModelRequest registerModelRequest)
             throws ModelException, InternalServerException, ExecutionException,
-                    InterruptedException, DownloadArchiveException {
+                    InterruptedException, DownloadArchiveException, WorkerInitializationException {
         String modelUrl = registerModelRequest.getModelUrl();
         if (modelUrl == null) {
             throw new BadRequestException("Parameter url is required.");
@@ -120,9 +122,13 @@ public final class ApiUtils {
         int maxBatchDelay = registerModelRequest.getMaxBatchDelay();
         int initialWorkers = registerModelRequest.getInitialWorkers();
         int responseTimeout = registerModelRequest.getResponseTimeout();
+        int startupTimeout = registerModelRequest.getStartupTimeout();
         boolean s3SseKms = registerModelRequest.getS3SseKms();
         if (responseTimeout == -1) {
             responseTimeout = ConfigManager.getInstance().getDefaultResponseTimeout();
+        }
+        if (startupTimeout == -1) {
+            startupTimeout = ConfigManager.getInstance().getDefaultStartupTimeout();
         }
 
         Manifest.RuntimeType runtimeType = null;
@@ -142,6 +148,7 @@ public final class ApiUtils {
                 batchSize,
                 maxBatchDelay,
                 responseTimeout,
+                startupTimeout,
                 initialWorkers,
                 registerModelRequest.getSynchronous(),
                 false,
@@ -156,12 +163,13 @@ public final class ApiUtils {
             int batchSize,
             int maxBatchDelay,
             int responseTimeout,
+            int startupTimeout,
             int initialWorkers,
             boolean isSync,
             boolean isWorkflowModel,
             boolean s3SseKms)
             throws ModelException, ExecutionException, InterruptedException,
-                    DownloadArchiveException {
+                    DownloadArchiveException, WorkerInitializationException {
 
         ModelManager modelManager = ModelManager.getInstance();
         final ModelArchive archive;
@@ -175,19 +183,30 @@ public final class ApiUtils {
                             batchSize,
                             maxBatchDelay,
                             responseTimeout,
+                            startupTimeout,
                             null,
                             false,
                             isWorkflowModel,
                             s3SseKms);
         } catch (FileAlreadyExistsException e) {
             throw new InternalServerException(
-                    "Model file already exists " + FilenameUtils.getName(modelUrl), e);
+                    "Model file already exists " + ArchiveUtils.getFilenameFromUrl(modelUrl), e);
         } catch (IOException | InterruptedException e) {
             throw new InternalServerException("Failed to save model: " + modelUrl, e);
         }
 
         modelName = archive.getModelName();
-        if (initialWorkers <= 0) {
+        int minWorkers = 0;
+        int maxWorkers = 0;
+        if (archive.getModelConfig() != null) {
+            int marMinWorkers = archive.getModelConfig().getMinWorkers();
+            int marMaxWorkers = archive.getModelConfig().getMaxWorkers();
+            if (marMinWorkers > 0 && marMaxWorkers >= marMinWorkers) {
+                minWorkers = marMinWorkers;
+                maxWorkers = marMaxWorkers;
+            }
+        }
+        if (initialWorkers <= 0 && minWorkers == 0) {
             final String msg =
                     "Model \""
                             + modelName
@@ -199,12 +218,14 @@ public final class ApiUtils {
             }
             return new StatusResponse(msg, HttpURLConnection.HTTP_OK);
         }
+        minWorkers = minWorkers > 0 ? minWorkers : initialWorkers;
+        maxWorkers = maxWorkers > 0 ? maxWorkers : initialWorkers;
 
         return ApiUtils.updateModelWorkers(
                 modelName,
                 archive.getModelVersion(),
-                initialWorkers,
-                initialWorkers,
+                minWorkers,
+                maxWorkers,
                 isSync,
                 true,
                 f -> {
@@ -222,7 +243,7 @@ public final class ApiUtils {
             boolean isInit,
             final Function<Void, Void> onError)
             throws ModelVersionNotFoundException, ModelNotFoundException, ExecutionException,
-                    InterruptedException {
+                    InterruptedException, WorkerInitializationException {
 
         ModelManager modelManager = ModelManager.getInstance();
         if (maxWorkers < minWorkers) {
@@ -353,9 +374,27 @@ public final class ApiUtils {
         } else if ((numWorking == 0) && (numScaled > 0)) {
             response = "Unhealthy";
         }
-        // TODO: Check if its OK to send other 2xx errors to ALB for "Partial Healthy" and
+        // TODO: Check if its OK to send other 2xx errors to ALB for "Partial Healthy"
+        // and
         // "Unhealthy"
         return response;
+    }
+
+    public static boolean isModelHealthy() {
+        ModelManager modelManager = ModelManager.getInstance();
+        int numHealthy = 0;
+        int numScaled = 0;
+
+        for (Map.Entry<String, ModelVersionedRefs> m : modelManager.getAllModels()) {
+            numScaled = m.getValue().getDefaultModel().getMinWorkers();
+            numHealthy =
+                    modelManager.getNumHealthyWorkers(
+                            m.getValue().getDefaultModel().getModelVersionName());
+            if (numHealthy < numScaled) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static DescribeModelResponse createModelResponse(
@@ -371,18 +410,41 @@ public final class ApiUtils {
         Manifest manifest = model.getModelArchive().getManifest();
         resp.setModelVersion(manifest.getModel().getModelVersion());
         resp.setRuntime(manifest.getRuntime().getValue());
+        resp.setResponseTimeout(model.getResponseTimeout());
+        resp.setStartupTimeout(model.getStartupTimeout());
+        resp.setMaxRetryTimeoutInSec(model.getMaxRetryTimeoutInMill() / 1000);
+        resp.setClientTimeoutInMills(model.getClientTimeoutInMills());
+        resp.setParallelType(model.getParallelType().getParallelType());
+        resp.setParallelLevel(model.getParallelLevel());
+        resp.setDeviceType(model.getDeviceType().getDeviceType());
+        resp.setDeviceIds(model.getDeviceIds());
+        resp.setContinuousBatching(model.isContinuousBatching());
+        resp.setUseJobTicket(model.isUseJobTicket());
+        resp.setUseVenv(model.isUseVenv());
+        resp.setStateful(model.isSequenceBatching());
+        resp.setSequenceMaxIdleMSec(model.getSequenceMaxIdleMSec());
+        resp.setSequenceTimeoutMSec(model.getSequenceTimeoutMSec());
+        resp.setMaxNumSequence(model.getMaxNumSequence());
+        resp.setMaxSequenceJobQueueSize(model.getMaxSequenceJobQueueSize());
 
         List<WorkerThread> workers = modelManager.getWorkers(model.getModelVersionName());
         for (WorkerThread worker : workers) {
             String workerId = worker.getWorkerId();
             long startTime = worker.getStartTime();
-            boolean isRunning = worker.isRunning();
+            boolean isRunning =
+                    worker.isRunning() && worker.getState() == WorkerState.WORKER_MODEL_LOADED;
             int gpuId = worker.getGpuId();
             long memory = worker.getMemory();
             int pid = worker.getPid();
             String gpuUsage = worker.getGpuUsage();
             resp.addWorker(workerId, startTime, isRunning, gpuId, memory, pid, gpuUsage);
         }
+
+        DescribeModelResponse.JobQueueStatus jobQueueStatus =
+                new DescribeModelResponse.JobQueueStatus();
+        jobQueueStatus.setRemainingCapacity(model.getJobQueueRemainingCapacity());
+        jobQueueStatus.setPendingRequests(model.getPendingRequestsInJobQueue());
+        resp.setJobQueueStatus(jobQueueStatus);
 
         return resp;
     }
@@ -392,22 +454,33 @@ public final class ApiUtils {
             throws ModelNotFoundException, ModelVersionNotFoundException {
         RestJob job = new RestJob(ctx, modelName, version, WorkerCommands.PREDICT, input);
         if (!ModelManager.getInstance().addJob(job)) {
-            String responseMessage = getInferenceErrorResponseMessage(modelName, version);
+            String responseMessage = getStreamingInferenceErrorResponseMessage(modelName, version);
             throw new ServiceUnavailableException(responseMessage);
         }
         return job;
     }
 
     @SuppressWarnings("PMD")
-    public static String getInferenceErrorResponseMessage(String modelName, String modelVersion) {
-        String responseMessage = "Model \"" + modelName;
+    public static String getStreamingInferenceErrorResponseMessage(
+            String modelName, String modelVersion) {
+        StringBuilder responseMessage = new StringBuilder().append("Model \"").append(modelName);
 
         if (modelVersion != null) {
-            responseMessage += "\" Version " + modelVersion;
+            responseMessage.append("\" Version ").append(modelVersion);
         }
 
+        responseMessage.append(
+                "\" has no worker to serve inference request. Please use scale workers API to add workers. "
+                        + "If this is a sequence inference, please check if it is closed, or expired;"
+                        + " or exceeds maxSequenceJobQueueSize");
+        return responseMessage.toString();
+    }
+
+    public static String getDescribeErrorResponseMessage(String modelName) {
+        String responseMessage = "Model \"" + modelName;
+
         responseMessage +=
-                "\" has no worker to serve inference request. Please use scale workers API to add workers.";
+                "\" has no worker to serve describe request. Please use scale workers API to add workers.";
         return responseMessage;
     }
 }

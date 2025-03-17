@@ -2,30 +2,29 @@ on:
   push:
     branches:
       - master
+  merge_group:
+
 jobs:
   build_docs_job:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.8]
+    runs-on: ubuntu-20.04
+    permissions:
+      # Grant write permission here so that the doc can be pushed to gh-pages branch
+      contents: write
     steps:
+    - name: Setup Python 3.9
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.9
+        architecture: x64
     - name: Checkout
-      uses: actions/checkout@v2
-    - name: Dependencies
+      uses: actions/checkout@v3
+    - name: Install Dependencies
       run: |
-        echo `python3 --version`
-        sudo apt-get install -y python-setuptools
-        python3 -m pip install --upgrade pip
-        python3 -m pip install -U sphinx
-        python3 -m pip install setuptools
-        python3 -m pip install torch
-        python3 -m pip install -e git+git://github.com/pytorch/pytorch_sphinx_theme.git#egg=pytorch_sphinx_theme
-        python3 -m pip install recommonmark
-        python3 -m pip install katex
-        python3 -m pip install sphinxcontrib.katex
-        python3 -m pip install sphinx_markdown_tables
+        pip install -r ./docs/sphinx/requirements.txt
     - name: Build the docset
-      run: cd ./docs/sphinx ; export PATH=$PATH:$(python3 -m site --user-base)/bin/ ; make html
+      run: |
+        cd ./docs/sphinx
+        make html
       id: build
     - name: Deploy
       uses: JamesIves/github-pages-deploy-action@releases/v3
@@ -34,3 +33,11 @@ jobs:
           BRANCH: gh-pages # The branch the action should deploy to.
           FOLDER: docs/sphinx/build/html
           CLEAN_EXCLUDE: '["_config.yml"]'
+    - name: Open issue on failure
+      if: ${{ failure() && github.event_name  == 'schedule' }}
+      uses: dacbd/create-issue-action@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        title: Doc automation failed
+        body:  Commit ${{ github.sha }} daily scheduled [CI run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) failed, please check why
+        assignees: ''

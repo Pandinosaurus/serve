@@ -1,0 +1,4 @@
+{
+"checkpoint_path" : "resources/examples/babyllama/babyllama_handler/stories15M.bin",
+"tokenizer_path" : "resources/examples/babyllama/babyllama_handler/tokenizer.bin"
+}

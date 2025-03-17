@@ -1,3 +1,7 @@
+<font size="6" style="font-weight: bold;"> ⚠️ Notice: Limited Maintenance </font>
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Custom Service
 
 ## Contents of this Document
@@ -250,19 +254,19 @@ class ModelHandler(BaseHandler):
 
 ```
 
-Refer [waveglow_handler](https://github.com/pytorch/serve/blob/master/examples/text_to_speech_synthesizer/waveglow_handler.py) for more details.
+Refer [waveglow_handler](https://github.com/pytorch/serve/blob/master/examples/text_to_speech_synthesizer/WaveGlow/waveglow_handler.py) for more details.
 
 #### Captum explanations for custom handler
 
 Torchserve returns the captum explanations for Image Classification, Text Classification and BERT models. It is achieved by placing the below request:
  `POST /explanations/{model_name}`
 
-The explanations are written as a part of the explain_handle method of base handler. The base handler invokes this explain_handle_method. The arguments that are passed to the explain handle methods are the pre-processed data and the raw data. It invokes the get insights function of the custom handler that returns the captum attributions. The user should write his own get_insights functionality to get the explanations 
+The explanations are written as a part of the explain_handle method of base handler. The base handler invokes this explain_handle_method. The arguments that are passed to the explain handle methods are the pre-processed data and the raw data. It invokes the get insights function of the custom handler that returns the captum attributions. The user should write his own get_insights functionality to get the explanations
 
-For serving a custom handler the captum algorithm should be initialized in the intialize functions of the handler 
+For serving a custom handler the captum algorithm should be initialized in the initialize functions of the handler
 
 The user can override the explain_handle function in the custom handler.
-The user should define their get_insights method for custom handler to get Captum Attributions. 
+The user should define their get_insights method for custom handler to get Captum Attributions.
 
 The above ModelHandler class should have the following methods with captum functionality.
 
@@ -292,7 +296,7 @@ The above ModelHandler class should have the following methods with captum funct
             else :
                 model_output = self.explain_handle(model_input, data)
             return model_output
-    
+
     # Present in the base_handler, so override only when neccessary
     def explain_handle(self, data_preprocess, raw_data):
         """Captum explanations handler
@@ -323,7 +327,7 @@ The above ModelHandler class should have the following methods with captum funct
     def get_insights(self,**kwargs):
         """
         Functionality to get the explanations.
-        Called from the explain_handle method 
+        Called from the explain_handle method
         """
         pass
 ```
@@ -362,7 +366,7 @@ class CustomImageClassifier(ImageClassifier):
 For more details refer following examples :
 - [mnist digit classifier handler](https://github.com/pytorch/serve/tree/master/examples/image_classifier)
 - [Huggingface transformer generalized handler](https://github.com/pytorch/serve/blob/master/examples/Huggingface_Transformers/Transformer_handler_generalized.py)
-- [Waveglow text to speech synthesizer](https://github.com/pytorch/serve/blob/master/examples/text_to_speech_synthesizer/waveglow_handler.py)
+- [Waveglow text to speech synthesizer](https://github.com/pytorch/serve/blob/master/examples/text_to_speech_synthesizer/WaveGlow/waveglow_handler.py)
 
 ## Creating a model archive with an entry point
 

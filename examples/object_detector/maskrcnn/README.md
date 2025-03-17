@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Object Detection using torchvision's pretrained maskrcnn model.
 
 * Download the pre-trained maskrcnn object detection model's state_dict from the following URL :
@@ -14,7 +18,7 @@ wget https://download.pytorch.org/models/maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth
     torch-model-archiver --model-name maskrcnn --version 1.0 --model-file serve/examples/object_detector/maskrcnn/model.py --serialized-file maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth --handler object_detector --extra-files serve/examples/object_detector/index_to_name.json
     mkdir model_store
     mv maskrcnn.mar model_store/
-    torchserve --start --model-store model_store --models maskrcnn=maskrcnn.mar
+    torchserve --start --model-store model_store --models maskrcnn=maskrcnn.mar --disable-token-auth  --enable-model-api
     curl http://127.0.0.1:8080/predictions/maskrcnn -T serve/examples/object_detector/persons.jpg
     ```
 * Output

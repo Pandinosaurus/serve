@@ -50,17 +50,20 @@ public final class TestUtils {
     private static Channel metricsChannel;
     private static String tsInferLatencyPattern =
             "ts_inference_latency_microseconds\\{"
-                    + "uuid=\"[\\w]{8}(-[\\w]{4}){3}-[\\w]{12}\","
                     + "model_name=\"%s\","
-                    + "model_version=\"%s\",\\}\\s\\d+(\\.\\d+)";
+                    + "model_version=\"%s\","
+                    + "hostname=\".+\",\\}\\s\\d+(\\.\\d+)";
 
     private TestUtils() {}
 
     public static void init() {
+        System.out.println("init");
         // set up system properties for local IDE debug
+        System.out.println("tsConfigFile1: " + System.getProperty("tsConfigFile"));
         if (System.getProperty("tsConfigFile") == null) {
             System.setProperty("tsConfigFile", "src/test/resources/config.properties");
         }
+        System.out.println("tsConfigFile2: " + System.getProperty("tsConfigFile"));
         if (System.getProperty("METRICS_LOCATION") == null) {
             System.setProperty("METRICS_LOCATION", "build/logs");
         }
@@ -74,7 +77,8 @@ public final class TestUtils {
 
             HttpsURLConnection.setDefaultSSLSocketFactory(context.getSocketFactory());
 
-            HttpsURLConnection.setDefaultHostnameVerifier((s, sslSession) -> true);
+            HttpsURLConnection.setDefaultHostnameVerifier(
+                    HttpsURLConnection.getDefaultHostnameVerifier());
         } catch (GeneralSecurityException e) {
             // ignore
         }
@@ -260,10 +264,21 @@ public final class TestUtils {
         channel.writeAndFlush(req);
     }
 
-    public static void describeModel(Channel channel, String modelName, String version) {
+    public static void describeModelManagementApi(Channel channel, String modelName) {
+        HttpRequest req =
+                new DefaultFullHttpRequest(
+                        HttpVersion.HTTP_1_1, HttpMethod.OPTIONS, "/models/" + modelName);
+        channel.writeAndFlush(req);
+    }
+
+    public static void describeModel(
+            Channel channel, String modelName, String version, boolean customized) {
         String requestURL = "/models/" + modelName;
         if (version != null) {
             requestURL += "/" + version;
+        }
+        if (customized) {
+            requestURL += "?customized=true";
         }
 
         HttpRequest req =

@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 ## TorchServe on Azure Kubernetes Service (AKS)
 
 ### 1 Create an AKS cluster
@@ -26,7 +30,7 @@ Use the [az aks create](https://docs.microsoft.com/en-us/cli/azure/aks?view=azur
 
 #### 1.4 Connect to the cluster
 
-To manage a Kubernetes cluster, you use [kubectl](https://kubernetes.io/docs/user-guide/kubectl/), the Kubernetes command-line client. If you use Azure Cloud Shell, `kubectl` is already installed. To install `kubectl` locally, use the [az aks install-cli](https://docs.microsoft.com/en-us/cli/azure/aks?view=azure-cli-latest#az-aks-install-cli) command:
+To manage a Kubernetes cluster, you use [kubectl](https://kubernetes.io/docs/reference/kubectl/), the Kubernetes command-line client. If you use Azure Cloud Shell, `kubectl` is already installed. To install `kubectl` locally, use the [az aks install-cli](https://docs.microsoft.com/en-us/cli/azure/aks?view=azure-cli-latest#az-aks-install-cli) command:
 
 ```az aks install-cli```
 
@@ -78,7 +82,7 @@ Your output should look similar to
 
 ```persistentvolumeclaim/model-store-claim created```
 
-Verify that the PVC / PV is created by excuting.
+Verify that the PVC / PV is created by executing.
 
 ```kubectl get pvc,pv```
 
@@ -102,7 +106,7 @@ Your output should look similar to
 
 ```pod/model-store-pod created```
 
-Verify that the pod is created by excuting.
+Verify that the pod is created by executing.
 
 ```kubectl get po```
 
@@ -180,9 +184,9 @@ torchserve-75f5b67469-5hnsn        1/1     Running   0          2m36s
 
 ### 3 Test Torchserve Installation
 
-#### 3.1 Fetch the Load Balancer Extenal IP
+#### 3.1 Fetch the Load Balancer External IP
 
-Fetch the Load Balancer Extenal IP by executing.
+Fetch the Load Balancer External IP by executing.
 
 ```kubectl get svc```
 
@@ -291,7 +295,7 @@ az group delete --name myResourceGroup --yes --no-wait
 ```
 
 ## Troubleshooting
-  
+
 
   **Troubleshooting Azure Cli login**
 
@@ -299,11 +303,11 @@ az group delete --name myResourceGroup --yes --no-wait
   Otherwise, open a browser page at https://aka.ms/devicelogin and enter the authorization code displayed in your terminal.
   If no web browser is available or the web browser fails to open, use device code flow with az login --use-device-code.
   Or you can login with your credential in command line, more details, see https://docs.microsoft.com/en-us/cli/azure/authenticate-azure-cli.
-  
+
   **Troubleshooting Azure resource for AKS cluster creation**
-  
-  * Check AKS availble region, https://azure.microsoft.com/en-us/global-infrastructure/services/?products=kubernetes-service
+
+  * Check AKS available region, https://azure.microsoft.com/en-us/explore/global-infrastructure/products-by-region/?products=kubernetes-service
   * Check AKS quota and VM size limitation, https://docs.microsoft.com/en-us/azure/aks/quotas-skus-regions
   * Check whether your subscription has enough quota to create AKS cluster, https://docs.microsoft.com/en-us/azure/networking/check-usage-against-limits
-  
+
   **For more AKS troubleshooting, please visit https://docs.microsoft.com/en-us/azure/aks/troubleshooting**

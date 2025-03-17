@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 ## TorchServe on Google Kubernetes Engine (GKE)
 
 ### 1 Create an GKE cluster
@@ -36,10 +40,10 @@ WARNING: Warning: basic authentication is deprecated, and will be removed in GKE
 WARNING: Currently VPC-native is not the default mode during cluster creation. In the future, this will become the default mode and can be disabled using `--no-enable-ip-alias` flag. Use `--[no-]enable-ip-alias` flag to suppress this warning.
 WARNING: Newly created clusters and node-pools will have node auto-upgrade enabled by default. This can be disabled using the `--no-enable-autoupgrade` flag.
 WARNING: Starting with version 1.18, clusters will have shielded GKE nodes by default.
-WARNING: Your Pod address range (`--cluster-ipv4-cidr`) can accommodate at most 1008 node(s). 
+WARNING: Your Pod address range (`--cluster-ipv4-cidr`) can accommodate at most 1008 node(s).
 WARNING: Starting with version 1.19, newly created clusters and node-pools will have COS_CONTAINERD as the default node image when no image type is specified.
 Machines with GPUs have certain limitations which may affect your workflow. Learn more at https://cloud.google.com/kubernetes-engine/docs/how-to/gpus
-Creating cluster ts in us-west1... Cluster is being health-checked (master is healthy)...done.                                                                    
+Creating cluster ts in us-west1... Cluster is being health-checked (master is healthy)...done.
 Created [https://container.googleapis.com/v1/projects/xxxxx-xxxx-35xx55/zones/us-west1/clusters/ts].
 To inspect the contents of your cluster, go to: https://console.cloud.google.com/kubernetes/workload_/gcloud/us-west1/ts?project=xxxxx-xxxx-35xx55
 kubeconfig entry generated for ts.
@@ -51,7 +55,7 @@ ts    us-west1  1.16.13-gke.401  34.83.140.167  n1-standard-4  1.16.13-gke.401  
 
 For running a cluster with GPU accelerator use `--accelerator type=,count=`
 
-The below command creates a cluster with a single n1-standard-4 node with and nvidia-testla-t4 GPU accelerator.
+The below command creates a cluster with a single n1-standard-4 node with and nvidia-tesla-t4 GPU accelerator.
 
 ```bash
 gcloud container clusters create torchserve --machine-type n1-standard-4 --accelerator type=nvidia-tesla-t4,count=1 --num-nodes 1
@@ -59,7 +63,7 @@ gcloud container clusters create torchserve --machine-type n1-standard-4 --accel
 
 #### 1.3 Connect to the cluster
 
-To manage a Kubernetes cluster, you use [kubectl](https://kubernetes.io/docs/user-guide/kubectl/), the Kubernetes command-line client. If you use GKE Cloud Shell, `kubectl` is already installed. To install `kubectl` locally, use the [gcloud components install](https://kubernetes.io/docs/tasks/tools/install-kubectl/) command:
+To manage a Kubernetes cluster, you use [kubectl](https://kubernetes.io/docs/reference/kubectl/), the Kubernetes command-line client. If you use GKE Cloud Shell, `kubectl` is already installed. To install `kubectl` locally, use the [gcloud components install](https://kubernetes.io/docs/tasks/tools/install-kubectl/) command:
 
 Below command require Cloud SDK component manager enabled.
 
@@ -93,14 +97,14 @@ git clone https://github.com/pytorch/serve.git
 cd serve/kubernetes/GKE
 ```
 
-**_NOTE:_** By default the helm chart installs GPU version of torchserve. Follow steps in section [2.2](####-2.2-For-CPU-setup) for running in a CPU only cluster. For GPU setup section [2.2](####-2.2-For-CPU-setup) can be skipped.
+**_NOTE:_** By default the helm chart installs GPU version of torchserve. Follow steps in section [2.2](#22-for-cpu-setup) for running in a CPU only cluster. For GPU setup section [2.2](#22-for-cpu-setup) can be skipped.
 
 #### 2.2 For CPU setup
 
 * Change torchserve image in Helm/values.yaml to the CPU version
 * Set `n_gpu` to `0` in Helm/values.yaml
-* Skip NVIDIA plugin installation in section [2.3](#####-2.3-Install-NVIDIA-device-plugin)
-  
+* Skip NVIDIA plugin installation in section [2.3](#23-install-nvidia-device-plugin)
+
 #### 2.3 Install NVIDIA device plugin
 
 Before the GPUs in the nodes can be used, you must deploy a DaemonSet for the NVIDIA device plugin. This DaemonSet runs a pod on each node to provide the required drivers for the GPUs.
@@ -148,7 +152,7 @@ cd GKE
 helm install mynfs ./nfs-provisioner/
 ```
 
-```kubectl get pods``` should show something similiar to:
+```kubectl get pods``` should show something similar to:
 
 ```bash
 NAME                                             READY   STATUS    RESTARTS   AGE
@@ -169,7 +173,7 @@ Replace storage size and server IP in pv_pvc.yaml with the server IP got from ab
 kubectl apply -f templates/pv_pvc.yaml -n default
 ```
 
-Verify that the PVC / PV is created by excuting.
+Verify that the PVC / PV is created by executing.
 
 ```bash
 kubectl get pvc,pv -n default
@@ -199,7 +203,7 @@ Your output should look similar to
 pod/model-store-pod created
 ```
 
-Verify that the pod is created by excuting.
+Verify that the pod is created by executing.
 
 ```bash
 kubectl get po
@@ -275,13 +279,13 @@ Possible errors in this step may be a result of
 * IAM limits.
 * Quota restrictions during cluster creation - [GKE Quotas](https://cloud.google.com/compute/quotas)
 
-You should able be able to find the following resources at the end of this step in the respective Gcoud consoles
+You should able be able to find the following resources at the end of this step in the respective Gcloud consoles
 
-* GKE -> Cluser in the Gcloud Console
+* GKE -> Cluster in the Gcloud Console
 
-#### 4.2 Troubleshooting NFS Persitant Volume Creation
+#### 4.2 Troubleshooting NFS Persistent Volume Creation
 
-Possible error in this step may be a result of one of the following. Your pod my be struck in *Init / Creating* forever / persitant volume claim may be in *Pending* forever.
+Possible error in this step may be a result of one of the following. Your pod my be struck in *Init / Creating* forever / persistent volume claim may be in *Pending* forever.
 
 * Storage disk not created / wrong storage disk name.
 
@@ -292,7 +296,7 @@ Possible error in this step may be a result of one of the following. Your pod my
   * Check affinity zone in values.yaml to match the storage disk.
 
 * Wrong Server IP
-  
+
   * Check the server IP mentioned in the pv_pvc.yaml
 
 * You can execute the following commands to inspect the pods / events to debug NFS Issues

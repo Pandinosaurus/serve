@@ -11,14 +11,14 @@ buildscript {
 plugins {
     id 'com.google.protobuf' version '0.8.13' apply false
     id 'idea'
-    id 'com.github.spotbugs' version '4.0.2' apply false
+    id 'com.github.spotbugs' version '6.0.7' apply false
 }
 
 allprojects {
     version = '1.0'
 
     repositories {
-        jcenter()
+        mavenCentral()
     }
 
     apply plugin: 'idea'
@@ -37,8 +37,8 @@ def javaProjects() {
 
 configure(javaProjects()) {
     apply plugin: 'java-library'
-    sourceCompatibility = 1.8
-    targetCompatibility = 1.8
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 
     defaultTasks 'jar'
 

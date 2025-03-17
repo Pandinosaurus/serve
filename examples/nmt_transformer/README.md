@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Transformer (NMT) models for English-French and English-German translation.
 
 The Transformer, introduced in the paper [Attention Is All You Need](https://arxiv.org/abs/1706.03762), is a powerful sequence-to-sequence modeling architecture capable of producing state-of-the-art neural machine translation (NMT) systems.
@@ -20,7 +24,7 @@ _NOTE: This example currently works with Py36 only due to fairseq dependency on 
     ./create_mar.sh en2fr_model
     ```
     The above command will create a "model_store" directory in the current working directory and generate TransformerEn2Fr.mar file.
-	
+
 * To generate the model archive (.mar) file for English-to-German translation model using following command
 
     ```bash
@@ -32,10 +36,10 @@ _NOTE: This example currently works with Py36 only due to fairseq dependency on 
 * Start the TorchServe using the model archive (.mar) file created in above step
 
     ```bash
-    torchserve --start --model-store model_store --ts-config config.properties
+    torchserve --start --model-store model_store --ts-config config.properties --disable-token-auth  --enable-model-api
     ```
 
-* Use [Management API](https://github.com/pytorch/serve/blob/master/docs/management_api.md#management-api) to register the model with one initial worker   
+* Use [Management API](https://github.com/pytorch/serve/blob/master/docs/management_api.md#management-api) to register the model with one initial worker
 	For English-to-French model
     ```bash
     curl -X POST "http://localhost:8081/models?initial_workers=1&synchronous=true&url=TransformerEn2Fr.mar"
@@ -51,7 +55,7 @@ _NOTE: This example currently works with Py36 only due to fairseq dependency on 
     }
 	```
 
-* To get the inference use the following curl command  
+* To get the inference use the following curl command
 	For English-to-French model
     ```bash
     curl http://127.0.0.1:8080/predictions/TransformerEn2Fr -T model_input/sample.txt | json_pp
@@ -87,10 +91,10 @@ requests before this timer time's out, it sends what ever requests that were rec
 * Start the model server. In this example, we are starting the model server with config.properties file
 
     ```bash
-    torchserve --start --model-store model_store --ts-config config.properties
+    torchserve --start --model-store model_store --ts-config config.properties --disable-token-auth  --enable-model-api
     ```
 
-* Now let's launch English_to_French translation model, which we have built to handle batch inference. 
+* Now let's launch English_to_French translation model, which we have built to handle batch inference.
 In this example, we are going to launch 1 worker which handles a `batch size` of 4 with a `max_batch_delay` of 10s.
 
     ```bash
@@ -100,9 +104,9 @@ In this example, we are going to launch 1 worker which handles a `batch size` of
 * Run batch inference command to test the model.
 
     ```bash
-    curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2Fr -T ./model_input/sample1.txt& 
-    curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2Fr -T ./model_input/sample2.txt& 
-    curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2Fr -T ./model_input/sample3.txt& 
+    curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2Fr -T ./model_input/sample1.txt&
+    curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2Fr -T ./model_input/sample2.txt&
+    curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2Fr -T ./model_input/sample3.txt&
     curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2Fr -T ./model_input/sample4.txt&
     {
         "input" : "Hello World !!!\n",
@@ -127,10 +131,10 @@ In this example, we are going to launch 1 worker which handles a `batch size` of
 * Start the model server. In this example, we are starting the model server with config.properties file
 
     ```bash
-    torchserve --start --model-store model_store --ts-config config.properties
+    torchserve --start --model-store model_store --ts-config config.properties --disable-token-auth  --enable-model-api
     ```
 
-* Now let's launch English_to_French translation model, which we have built to handle batch inference. 
+* Now let's launch English_to_French translation model, which we have built to handle batch inference.
 In this example, we are going to launch 1 worker which handles a `batch size` of 4 with a `max_batch_delay` of 10s.
 
     ```bash
@@ -140,9 +144,9 @@ In this example, we are going to launch 1 worker which handles a `batch size` of
 * Run batch inference command to test the model.
 
     ```bash
-	curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2De -T ./model_input/sample1.txt& 
-	curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2De -T ./model_input/sample2.txt& 
-	curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2De -T ./model_input/sample3.txt& 
+	curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2De -T ./model_input/sample1.txt&
+	curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2De -T ./model_input/sample2.txt&
+	curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2De -T ./model_input/sample3.txt&
 	curl -X POST http://127.0.0.1:8080/predictions/TransformerEn2De -T ./model_input/sample4.txt&
     {
         "input" : "Hello World !!!\n",

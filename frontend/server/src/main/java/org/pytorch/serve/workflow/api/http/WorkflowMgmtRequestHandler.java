@@ -26,6 +26,7 @@ import org.pytorch.serve.http.ResourceNotFoundException;
 import org.pytorch.serve.http.StatusResponse;
 import org.pytorch.serve.util.JsonUtils;
 import org.pytorch.serve.util.NettyUtils;
+import org.pytorch.serve.wlm.WorkerInitializationException;
 import org.pytorch.serve.workflow.WorkflowManager;
 import org.pytorch.serve.workflow.messages.DescribeWorkflowResponse;
 import org.pytorch.serve.workflow.messages.ListWorkflowResponse;
@@ -41,13 +42,28 @@ public class WorkflowMgmtRequestHandler extends HttpRequestHandlerChain {
     /** Creates a new {@code WorkflowMgmtRequestHandler} instance. */
     public WorkflowMgmtRequestHandler() {}
 
+    private static DescribeWorkflowResponse createWorkflowResponse(
+            String workflowName, WorkFlow workflow) {
+        DescribeWorkflowResponse response = new DescribeWorkflowResponse();
+        response.setWorkflowName(workflowName);
+        response.setWorkflowUrl(workflow.getWorkflowArchive().getUrl());
+        response.setBatchSize(workflow.getBatchSize());
+        response.setMaxBatchDelay(workflow.getMaxBatchDelay());
+        response.setMaxWorkers(workflow.getMaxWorkers());
+        response.setMinWorkers(workflow.getMinWorkers());
+        response.setWorkflowDag(workflow.getWorkflowDag());
+        return response;
+    }
+
     @Override
     public void handleRequest(
             ChannelHandlerContext ctx,
             FullHttpRequest req,
             QueryStringDecoder decoder,
             String[] segments)
-            throws ModelException, DownloadArchiveException, WorkflowException {
+            throws ModelException, DownloadArchiveException, WorkflowException,
+                    WorkerInitializationException {
+
         if (isManagementReq(segments)) {
             if (!"workflows".equals(segments[1])) {
                 throw new ResourceNotFoundException();
@@ -137,6 +153,7 @@ public class WorkflowMgmtRequestHandler extends HttpRequestHandlerChain {
                                 registerWFRequest.getWorkflowName(),
                                 registerWFRequest.getWorkflowUrl(),
                                 registerWFRequest.getResponseTimeout(),
+                                registerWFRequest.getStartupTimeout(),
                                 true,
                                 registerWFRequest.getS3SseKms());
 
@@ -193,18 +210,5 @@ public class WorkflowMgmtRequestHandler extends HttpRequestHandlerChain {
                         statusResponse.getE());
             }
         }
-    }
-
-    private static DescribeWorkflowResponse createWorkflowResponse(
-            String workflowName, WorkFlow workflow) {
-        DescribeWorkflowResponse response = new DescribeWorkflowResponse();
-        response.setWorkflowName(workflowName);
-        response.setWorkflowUrl(workflow.getWorkflowArchive().getUrl());
-        response.setBatchSize(workflow.getBatchSize());
-        response.setMaxBatchDelay(workflow.getMaxBatchDelay());
-        response.setMaxWorkers(workflow.getMaxWorkers());
-        response.setMinWorkers(workflow.getMinWorkers());
-        response.setWorkflowDag(workflow.getWorkflowDag());
-        return response;
     }
 }

@@ -1,0 +1,6 @@
+responseTimeout: 300
+handler:
+    profile: true
+    model_type: "vit_h"
+    sam_checkpoint: "sam_vit_h_4b8939.pth"
+    process_batch_size: 8

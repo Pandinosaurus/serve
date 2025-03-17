@@ -1,10 +1,14 @@
+<font size="6" style="font-weight: bold;"> ⚠️ Notice: Limited Maintenance </font>
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # TorchServe Workflows
 
-TorchServe can be used for serving ensemble of Pytorch models packaged as mar files and Python functions through Workflow APIs. 
+TorchServe can be used for serving ensemble of Pytorch models packaged as mar files and Python functions through Workflow APIs.
 
 It utilizes [REST based APIs](rest_api.md) for workflow management and predictions.
 
-A Workflow is served on TorchServe using a workflow-archive(.war) which comprises of following: 
+A Workflow is served on TorchServe using a workflow-archive(.war) which comprises of following:
 
 ## Workflow Specification file
 
@@ -31,7 +35,7 @@ models:
        min-workers: 1   #override the global params
        max-workers: 2
        batch-size: 4
-     
+
     m2:
        url : model2.mar
 
@@ -41,7 +45,7 @@ models:
 
     m4:
       url : model4.mar
- 
+
 dag:
   pre_processing : [m1]
   m1 : [m2]
@@ -70,7 +74,7 @@ User can define following workflow model properties:
 | max-workers | Number of maximum workers launched for every workflow model | 1 |
 | batch-size | Batch size used for every workflow model | 1 |
 | max-batch-delay | Maximum batch delay time TorchServe waits for every workflow model to receive `batch_size` number of requests.| 50 ms |
-| retry-attempts | Retry attempts for a specific workflow node incase of a failure | 1 |
+| retry-attempts | Retry attempts for a specific workflow node in case of a failure | 1 |
 | timeout-ms | Timeout in MilliSeconds for a given node | 10000 |
 
 These properties can be defined as a global value for every model and can be over-ridden at every model level in workflow specification. Refer the above example for more details.

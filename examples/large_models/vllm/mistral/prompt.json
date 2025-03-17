@@ -1,0 +1,7 @@
+{
+  "model": "mistral",
+  "prompt": "A robot may not injure a human being",
+  "temperature": 0.8,
+  "logprobs": 1,
+  "max_tokens": 128
+}

@@ -1,3 +1,7 @@
+# ⚠️ Notice: Limited Maintenance
+
+This project is no longer actively maintained. While existing releases remain available, there are no planned updates, bug fixes, new features, or security patches. Users should be aware that vulnerabilities may not be addressed.
+
 # Torch Model archiver for TorchServe
 
 ## Contents of this Document
@@ -49,7 +53,12 @@ Now let's cover the details on using the CLI tool: `model-archiver`.
 Here is an example usage with the densenet161 model archive following the example in the [examples README](../examples/README.md):
 
 ```bash
-torch-model-archiver --model-name densenet161 --version 1.0 --model-file examples/image_classifier/densenet_161/model.py --serialized-file densenet161-8d451a50.pth --extra-files examples/image_classifier/index_to_name.json --handler image_classifier
+torch-model-archiver --model-name densenet161 \
+    --version 1.0 \
+    --model-file examples/image_classifier/densenet_161/model.py \
+    --serialized-file densenet161-8d451a50.pth \
+    --extra-files examples/image_classifier/index_to_name.json \
+    --handler image_classifier
 ```
 
 ### Arguments
@@ -58,8 +67,8 @@ torch-model-archiver --model-name densenet161 --version 1.0 --model-file example
 $ torch-model-archiver -h
 usage: torch-model-archiver [-h] --model-name MODEL_NAME  --version MODEL_VERSION_NUMBER
                       --model-file MODEL_FILE_PATH --serialized-file MODEL_SERIALIZED_PATH
-                      --handler HANDLER [--runtime {python,python2,python3}]
-                      [--export-path EXPORT_PATH] [-f] [--requirements-file]
+                      --handler HANDLER [--runtime {python,python3}]
+                      [--export-path EXPORT_PATH] [-f] [--requirements-file] [--config-file]
 
 Model Archiver Tool
 
@@ -78,22 +87,22 @@ optional arguments:
                         Path to python file containing model architecture.
                         This parameter is mandatory for eager mode models.
                         The model architecture file must contain only one
-                        class definition extended from torch.nn.modules.
+                        class definition extended from torch.nn.Module.
   --handler HANDLER     TorchServe's default handler name  or handler python
                         file path to handle custom TorchServe inference logic.
   --extra-files EXTRA_FILES
                         Comma separated path to extra dependency files.
-  --runtime {python,python2,python3}
+  --runtime {python,python3}
                         The runtime specifies which language to run your
                         inference code on. The default runtime is
                         RuntimeType.PYTHON. At the present moment we support
-                        the following runtimes python, python2, python3
+                        the following runtimes python, python3
   --export-path EXPORT_PATH
                         Path where the exported .mar file will be saved. This
                         is an optional parameter. If --export-path is not
                         specified, the file will be saved in the current
                         working directory.
-  --archive-format {tgz,default}
+  --archive-format {tgz, no-archive, zip-store, default}
                         The format in which the model artifacts are archived.
                         "tgz": This creates the model-archive in <model-name>.tar.gz format.
                         If platform hosting requires model-artifacts to be in ".tar.gz"
@@ -102,6 +111,9 @@ optional arguments:
                         at "export-path/{model-name}" location. As a result of this choice,
                         MANIFEST file will be created at "export-path/{model-name}" location
                         without archiving these model files
+                        "zip-store": This creates the model-archive in <model-name>.mar format
+                        but will skip deflating the files to speed up creation. Mainly used
+                        for testing purposes
                         "default": This creates the model-archive in <model-name>.mar format.
                         This is the default archiving format. Models archived in this format
                         will be readily hostable on TorchServe.
@@ -113,6 +125,7 @@ optional arguments:
   -r, --requirements-file
                         Path to requirements.txt file containing a list of model specific python
                         packages to be installed by TorchServe for seamless model serving.
+  -c, --config-file         Path to a model config yaml file.
 ```
 
 ## Artifact Details
@@ -131,6 +144,9 @@ A valid model name must begin with a letter of the alphabet and can only contain
 ### Model file
 
 A model file should contain the model architecture. This file is mandatory in case of eager mode models.
+
+This file should contain a single class that inherits from
+[torch.nn.Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html).
 
 ### Serialized file
 
@@ -151,6 +167,40 @@ e.g. if your custom handler custom_image_classifier.py is in /home/serve/example
 `--handler /home/serve/examples/custom_image_classifier` or if it has my_entry_point module level function then `--handler /home/serve/examples/custom_image_classifier:my_entry_point_func`
 
 For more details refer [default handler documentation](../docs/default_handlers.md) or [custom handler documentation](../docs/custom_service.md)
+
+### Config file
+
+A model config yaml file. For example:
+
+```
+# TS frontend parameters
+# See all supported parameters: https://github.com/pytorch/serve/blob/2a0ce756b179677f905c3216b9c8427cd530a129/frontend/archive/src/main/java/org/pytorch/serve/archive/model/ModelConfig.java#L14
+minWorkers: 1 # default: #CPU or #GPU
+maxWorkers: 1 # default: #CPU or #GPU
+batchSize: 1 # default: 1
+maxBatchDelay: 100 # default: 100 msec
+responseTimeout: 120 # default: 120 sec
+deviceType: cpu # cpu, gpu, neuron
+deviceIds: [0,1,2,3] # gpu device ids allocated to this model.
+parallelType: pp # pp: pipeline parallel; pptp: tensor+pipeline parallel; custom: user defined parallelism. Default: empty
+# parallelLevel: 1 # number of GPUs assigned to a the worker process if parallelType is custom (do NOT set if torchrun is used, see below)
+useVenv: Create python virtual environment when using python backend to install model dependencies
+         (if enabled globally using install_py_dep_per_model=true) and run workers for model loading
+         and inference. Note that, although creation of virtual environment adds a latency overhead
+         (approx. 2 to 3 seconds) during model load and disk space overhead (approx. 25M), overall
+         it can speed up load time and reduce disk utilization for models with custom dependencies
+         since it enables reusing custom packages(specified in requirements.txt) and their
+         supported dependencies that are already available in the base python environment.
+
+# See torchrun parameters: https://pytorch.org/docs/stable/elastic/run.html
+torchrun:
+  nproc-per-node: 2
+
+# TS backend parameters
+pippy:
+  rpc_timeout: 1800
+  pp_group_size: 4 # pipeline parallel size, tp_group_size = world size / pp_group_size
+```
 
 ## Creating a Model Archive
 
@@ -179,7 +229,7 @@ This will package all the model artifacts files and output `densenet_161.mar` in
 
 
 ### Model specific custom python requirements
-Custom models/handlers may depend on different python packages which are not installed by-default as a part of `TorchServe` setup. 
+Custom models/handlers may depend on different python packages which are not installed by-default as a part of `TorchServe` setup.
 Supply a [python requirements](https://pip.pypa.io/en/stable/user_guide/#requirements-files) file containing the list of required python packages to be installed by `TorchServe` for seamless model serving using `--requirements-file` parameter while creating the model-archiver.
 
 Example:
